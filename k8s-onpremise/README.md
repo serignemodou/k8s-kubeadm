@@ -6,5 +6,6 @@
 - ✅ Kube-vip for application exposition (VIP worker associate to kube-vip (daemonset on kube))
 - ✅ Cert-Manager for SSL certificates and security hardening 
 - ✅ Contour and HttpProxy
+- ✅ GitOps ArgoCD
+- ✅ Monitoring with Prometheus - Grafana - AlertManager
 - ✅ Fully automated deployment with Ansible (comming soon)
-- ✅ Monitoring and log management (comming soon)
