@@ -24,6 +24,7 @@ spec:
           - cert-manager
           - gatekeeper-system
           - prometheus-system
+          - argocd-system
   egress:
     - toEndpoints:
         - matchLabels:
