@@ -1,0 +1,35 @@
+#=====================================================================================================================================================
+#### Création et Configuration de machine virtuel pour le control plan
+## https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/main/config/crd/bases/infrastructure.cluster.x-k8s.io_azuremachinetemplates.yaml 
+#=====================================================================================================================================================
+
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureMachineTemplate
+metadata:
+  name: capz-machine-template-control-plane
+  namespace: capz-management-clusterclass
+spec:
+  template:
+    spec:
+      vmSize: Standard_D2s_v5
+      identity: SystemAssigne
+      image:
+        name: Ubuntu22.04-LTS-SWAP
+        gallery: ubuntu-capz
+        plan:
+          offer: "0001-com-ubuntu-server-jammy"
+          publisher: "Canonical"
+          sku: "22_04-lts-gen2"
+        version: latest
+      osDisk:
+        cachingType: None
+        diskSizeGB: 100
+        osType: Linux
+      dataDisks:
+      - diskSizeGB: 50
+        nameSuffix: etcddisk
+      securityProfile:
+        encryptionAtHost: false
+      networkInterfaces:
+        subnetName: snet-control-plane
+      

@@ -1,0 +1,170 @@
+#================================================================================================================================================================
+#### Configuration du bootstrap du cluster control plane avec kubeadm
+## https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanetemplates.yaml 
+#================================================================================================================================================================
+
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: capz-kubeadm-control-plane
+  namespace: capi-management-clusterclass
+spec:
+  template:
+    spec:
+      kubeadmConfigSpec:
+        clusterName: k8s-sdx-swap
+        controlPlaneEndpoint: "api.sdx.proxima.swap.io:6443"
+
+        format: cloud-config
+        
+        files:
+        - contentFrom:
+            secret:
+              key: control-plane-azure.json
+              name: k8s-sdx-swap-control-plane-azure-json
+          owner: root:root
+          path: /etc/kubernetes/azure.json
+          permissions: "0644"
+
+        preKubeadmCommands:
+          - apt-get update && apt-get upgrade -y
+          - apt-get install unzip tar apt-transport-https libseccomp2 util-linux ca-certificates curl gpg gnupg nfs-common -y
+          - swapoff -a && sed -i '/ swap / s/^/#/' /etc/fstab
+          - |
+            cat <<EOF | tee /etc/modules-load.d/k8s.conf
+            overlay
+            br_netfilter
+            ip_vs
+            ip_vs_rr
+            ip_vs_wrr
+            ip_vs_sh
+            EOF
+          - modprobe br_netfilter
+          - modprobe overlay
+          - modprobe ip_vs
+          - modprobe ip_vs_wrr
+          - modprobe ip_vs_wrr
+          - modprobe ip_vs_sh
+          - | 
+            cat <<EOF | tee /etc/sysctl.d/k8s.conf
+            net.bridge.bridge-nf-call-iptables  = 1
+            net.bridge.bridge-nf-call-ip6tables = 1
+            net.ipv4.ip_forward                 = 1
+            EOF
+          - sysctl --system
+          - hostnamectl set-hostname "${{ local_hostname }}"
+          - | 
+            echo "[preKubeadmCommands] Start /etc/hosts configuration !"
+            IPV4="{{ ds.meta_data["local_ipv4"] }}"
+            HOSTNAME="${{ local_hostname }}"
+            if ! grep -q "$HOSTNAME" /etc/hostnames
+              echo "[preKubeadmCommands] $IPV4 $HOSTNAME" >> /etc/hosts
+              echo "[preKubeadmCommands] Added $IPV4 $HOSTNAME to /etc/hosts done !"
+            else
+              echo "[preKubeadmCommands] $HOSTNAME already exist on /etc/hosts"
+            fi
+            echo "[preKubeadmCommands] End /etc/hosts configuration !"
+          - |
+            echo "[preKubeadmCommands] Start installing containerd"
+            if command -v containerd >/dev/null 2>&1 && systemctl is-active --quiet containerd
+              echo "[preKubeadmCommands] containerd already installed and running"
+            else
+              echo "[preKubeadmCommands] Installing containerd"
+              VERSION="1.7.30"
+              mkdir -p /etc/containerd
+              mkdir -p /opt/cni/bin/
+
+              wget https://github.com/containerd/containerd/releases/download/$VERSION/cri-containerd-cni-1.7.30-linux-amd64.tar.gz
+              tar Cxzvf /opt/cni/bin/ cri-containerd-cni-1.7.30-linux-amd64.tar.gz
+
+              cat <<EOF | sudo tee /etc/containerd/config.toml
+              version = 2
+              imports = ["/etc/containerd/conf.d/*.toml"]
+              [plugins]
+                [plugins."io.containerd.grpc.v1.cri"]
+                  sandbox_image = "registry.k8s.io/pause:3.10"
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+                  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                    runtime_type = "io.containerd.runc.v2"
+                    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                      SystemdCgroup = true
+              EOF
+
+              systemctl start containerd
+              systemctl enable containerd
+              systemctl status containerd
+            fi
+            echo "[preKubeadmCommands] End installing containerd"
+          - |
+            echo "[preKubeadmCommands] Start installing kubectl"
+            if command -v kubectl >/dev/null 2>&1
+              echo "[preKubeadmCommands] kubectl already installed: $(kubectl version --client --short)"
+            else:
+              echo "[preKubeadmCommands] Installing kubectl"
+              KUBECTL_VERSION="1.31.5-1.1"
+              curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+              echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+              apt-get update
+              apt-get install -y kubectl=$KUBECTL_VERSION
+              apt-mark hold kubectl
+
+        clusterConfiguration:
+          apiServer:
+            extraArgs: 
+              cloud-provider: external
+              audit-log-path: "/var/log/kubernetes/audit/audit.log"
+              audit-log-maxage: "30"
+              audit-log-maxbackup: "3"
+              audit-log-maxsize: "100"
+            timeoutForControlPlane: 20m
+          controllerManager:
+            extraArgs:
+              cloud-provider: external
+              node-cidr-mask-size: "24"
+          etcd:
+            local:
+              dataDir: /var/lib/etcd
+            extraArgs:
+              listen-metrics-urls: "http://0.0.0.0::2379"
+
+        initConfiguration:
+          localAPIEndpoint:
+            advertiseAddress: "0.0.0.0"
+            bindPort: 6443
+          nodeRegistration:
+            criSocket: unix:///var/run/containerd/containerd.sock
+            kubeletExtraArgs:
+              cloud-provider: external
+              cgroup-driver: systemd
+            name: '{{ ds.meta_data["local_hostname"] }}'
+
+        joinConfiguration:
+          controlPlane:
+            localAPIEndpoint:
+              advertiseAddress: "0.0.0.0"
+              bindPort: 6443
+          nodeRegistration:
+            criSocket: unix:///var/run/containerd/containerd.sock
+            kubeletExtraArgs:
+              cloud-provider: external
+            name: '{{ ds.meta_data["local_hostname"] }}'
+
+        postKubeadmCommands:
+          - |
+            NODE_NAME=$(hostname)
+            echo "[postKubeadmCommands] Wait node added to the cluster"
+            until kubectl --kubeconfig /etc/kubernetes/admin.config get node $NODE_NAME >/dev/null 2>&1; do
+              echo "[postKubeadmCommands] wait for node added"
+              sleep 5
+            done
+
+            echo "[postKubeadmCommand] Waiting for node $NODE_NAME to become ready"
+            until kubectl --kubeconfig /etc/kubernetes/admin.conf get node $NODE_NAME -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' | grep -q "True"; do
+              echo "[postKubeadmiCommands] Node not ready yet !"
+              sleep 5
+            done
+
+            echo "[postKubeadmCommands] Node is Ready. Removing taint if it exists..."
+            kubectl --kubeconfig /etc/kubernetes/admin.conf taint nodes $NODE_NAME node.cloudprovider.kubernetes.io/uninitialized:NoSchedule- || true
+            echo "[postKubeadmCommands] Completed taint removal process."
+

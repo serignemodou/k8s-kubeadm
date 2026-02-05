@@ -212,7 +212,7 @@ apt-mark hold kubelet kubeadm kubectl
 
 ### Insert this line below with vi in /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf file after section [Service] (it's kubelet attributes parameters)
 ```
-Environment="KUBELET_EXTRA_ARGS= --runtime-cgroups=/system.slice/containerd.service --container-runtime=remote --runtime-request-timeout=15m --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+Environment="KUBELET_EXTRA_ARGS= --runtime-cgroups=/system.slice/containerd.service --container-runtime=remote --runtime-request-timeout=15m --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock"
 ```
 
 # 🏗️ Install Kubernetes

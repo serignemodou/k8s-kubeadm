@@ -1,0 +1,36 @@
+#=====================================================================================================================================================
+#### Configuration de l'infrastructure sous-jacante (vnet, subnet, lb, nsg, route ...) 
+## https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/main/config/crd/bases/infrastructure.cluster.x-k8s.io_azureclustertemplates.yaml 
+#=====================================================================================================================================================
+
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureClusterTemplate
+metadata:
+  name: capz-underling-infrastruction
+  namespace: capz-management-clusterclass
+spec:
+  template:
+    spec:
+      subscriptionID: ${AZURE_SUBSCRIPTION_ID}
+      location: westeu2
+      identityRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: AzureClusterIdentity
+        name: capz-cluster-identity
+      networkSpec:
+        apiServerLB:
+          type: Internal
+          sku: Standard
+        controlPlaneOutboundLB:
+          type: Internal
+        nodeOutboundLB:
+          type: Public
+        vnet:
+          cidrBlocks: "172.24.144.0/16"
+        subnets:
+        - name: snet-control-plane
+          role: control-plane
+          cidrBlocks: "172.24.244.16/24"
+        - name: snet-worker-node
+          role: node
+          cidrBlocks: "172.24.244.256/24"
