@@ -1,0 +1,1 @@
+![alt text](capi-k8s.drawio.png)
